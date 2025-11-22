@@ -39,6 +39,11 @@ final class AudioPlayerService {
     var state: AudioPlayerState {
         player.state
     }
+    
+    var loopMode: AudioPlayerLoopMode {
+        get { player.loopMode }
+        set { player.loopMode = newValue }
+    }
 
     var statusChangedNotifier = Notifier<AudioPlayerState>()
     var metadataReceivedNotifier = Notifier<[String: String]>()
@@ -113,6 +118,32 @@ final class AudioPlayerService {
 
     func seek(at time: Double) {
         player.seek(to: time)
+    }
+    
+    func setLoopMode(_ mode: AudioPlayerLoopMode) {
+        player.loopMode = mode
+    }
+    
+    func cycleLoopMode() {
+        switch player.loopMode {
+        case .off:
+            player.loopMode = .single(times: nil)
+        case .single:
+            player.loopMode = .all(times: nil)
+        case .all:
+            player.loopMode = .off
+        }
+    }
+    
+    func setLoopTimes(_ times: Int?) {
+        switch player.loopMode {
+        case .off:
+            break
+        case .single:
+            player.loopMode = .single(times: times)
+        case .all:
+            player.loopMode = .all(times: times)
+        }
     }
 
     private func recreatePlayer() {

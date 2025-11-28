@@ -232,3 +232,5 @@ AudioStreaming is available under the MIT license. See the LICENSE file for more
 # Attributions
 This library takes inspiration on the already battled-tested streaming library, [StreamingKit](https://github.com/tumtumtum/StreamingKit).
 Big 🙏 to Thong Nguyen (@tumtumtum) and Matt Gallagher (@mattgallagher) for [AudioStreamer](https://github.com/mattgallagher/AudioStreamer)
+
+This library uses https://github.com/sbooth/ogg-binary-xcframework, https://github.com/sbooth/vorbis-binary-xcframework for Ogg Vorbis decoder packaged by @sbooth

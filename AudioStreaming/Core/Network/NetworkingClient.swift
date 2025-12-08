@@ -68,6 +68,18 @@ final class NetworkingClient {
         session.finishTasksAndInvalidate()
     }
 
+    /// Explicitly shuts down the networking client, cancelling all pending tasks immediately.
+    /// Call this method before the client is expected to be deallocated to ensure clean cleanup.
+    func shutdown() {
+        tasksLock.withLock {
+            for (task, _) in tasks {
+                task.cancel()
+            }
+            tasks.removeAll()
+        }
+        session.invalidateAndCancel()
+    }
+
     /// Creates a data stream for the given `URLRequest`
     /// - parameter request: A `URLRequest` to be used for the data stream
     func stream(request: URLRequest) -> NetworkDataStream {

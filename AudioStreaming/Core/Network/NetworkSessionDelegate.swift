@@ -10,7 +10,8 @@ final class NetworkSessionDelegate: NSObject, URLSessionDataDelegate {
 
     func stream(for task: URLSessionTask) -> NetworkDataStream? {
         guard let taskProvider = taskProvider else {
-            assertionFailure("couldn't found taskProvider")
+            // This can happen during session cleanup when callbacks are still in flight
+            Logger.debug("taskProvider is nil - likely during session cleanup", category: .generic)
             return nil
         }
         return taskProvider.dataStream(for: task)

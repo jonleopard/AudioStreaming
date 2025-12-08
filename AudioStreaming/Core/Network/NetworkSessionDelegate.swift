@@ -4,6 +4,7 @@
 //
 
 import Foundation
+import OSLog
 
 final class NetworkSessionDelegate: NSObject, URLSessionDataDelegate {
     weak var taskProvider: StreamTaskProvider?

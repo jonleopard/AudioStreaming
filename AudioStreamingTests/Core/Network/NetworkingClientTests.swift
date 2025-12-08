@@ -30,7 +30,7 @@ class NetworkingClientTests: XCTestCase {
 
     func testShouldStartRequestImmediatelly() {
         let networking = NetworkingClient()
-        let url = URL(string: "https://httpbin.org/get")!
+        let url = URL(string: "https://httpbun.com/get")!
         let request = URLRequest(url: url)
 
         let expectation = self.expectation(description: "\(url)")

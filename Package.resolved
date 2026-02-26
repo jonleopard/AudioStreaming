@@ -1,5 +1,5 @@
 {
-  "originHash" : "68edf8cb05464ad5cb63fbf7d9ab8c54c5bfd1afcf71a774b97ff4f35f7e3fd1",
+  "originHash" : "4ec0cc83ee9d9e96d61944a4ade97096b05323b7929cfa5c32db521375ba4382",
   "pins" : [
     {
       "identity" : "ogg-binary-xcframework",
@@ -8,6 +8,15 @@
       "state" : {
         "revision" : "c0e822e18738ad913864e98d9614927ac1e9337c",
         "version" : "0.1.2"
+      }
+    },
+    {
+      "identity" : "opus-binary-xcframework",
+      "kind" : "remoteSourceControl",
+      "location" : "https://github.com/sbooth/opus-binary-xcframework",
+      "state" : {
+        "revision" : "8e23828b9d88f0ff1ff2d7c4bcb65739a4bdeff8",
+        "version" : "0.3.0"
       }
     },
     {

@@ -36,8 +36,13 @@ final class AudioFileStreamProcessor {
     private let rendererContext: AudioRendererContext
     private let outputAudioFormat: AudioStreamBasicDescription
     
-    // Add Ogg Vorbis processor
     private lazy var oggVorbisProcessor = OggVorbisStreamProcessor(
+        playerContext: playerContext,
+        rendererContext: rendererContext,
+        outputAudioFormat: outputAudioFormat
+    )
+
+    private lazy var opusProcessor = OpusStreamProcessor(
         playerContext: playerContext,
         rendererContext: rendererContext,
         outputAudioFormat: outputAudioFormat
@@ -50,12 +55,15 @@ final class AudioFileStreamProcessor {
 
     var currentFileFormat: String = ""
     let fileFormatsForDelayedConverterCreation: Set = ["fa4m", "f4pm"]
-    
-    // Track if we're processing Ogg Vorbis
+
     private var isProcessingOggVorbis: Bool = false
+    private var isProcessingOpus: Bool = false
+    private var isProcessingOggContainer: Bool = false
+    private var oggHeaderBuffer = Data()
+    private let oggHeaderSniffThreshold = 128
 
     var isFileStreamOpen: Bool {
-        audioFileStream != nil || isProcessingOggVorbis
+        audioFileStream != nil || isProcessingOggVorbis || isProcessingOpus || isProcessingOggContainer
     }
 
     init(playerContext: AudioPlayerContext,
@@ -66,8 +74,10 @@ final class AudioFileStreamProcessor {
         self.rendererContext = rendererContext
         self.outputAudioFormat = outputAudioFormat
         
-        // Set up Ogg Vorbis processor callback
         oggVorbisProcessor.processorCallback = { [weak self] effect in
+            self?.fileStreamCallback?(effect)
+        }
+        opusProcessor.processorCallback = { [weak self] effect in
             self?.fileStreamCallback?(effect)
         }
     }
@@ -79,25 +89,69 @@ final class AudioFileStreamProcessor {
     /// - Returns: An `OSStatus` value indicating if an error occurred or not.
 
     func openFileStream(with fileHint: AudioFileTypeID) -> OSStatus {
-        // Check if this is an Ogg Vorbis file
-        if fileHint == kAudioFileOggType {
-            isProcessingOggVorbis = true
+        if isOggContainer(fileHint) {
+            isProcessingOggContainer = true
+            oggHeaderBuffer = Data()
             return noErr
         } else {
             isProcessingOggVorbis = false
+            isProcessingOpus = false
+            isProcessingOggContainer = false
             let data = UnsafeMutableRawPointer.from(object: self)
             return AudioFileStreamOpen(data, _propertyListenerProc, _propertyPacketsProc, fileHint, &audioFileStream)
         }
     }
 
+    private func isOggContainer(_ hint: AudioFileTypeID) -> Bool {
+        hint == kAudioFileOggType || hint == kAudioFileOpusType
+    }
+
+    // Inspect the first Ogg page's codec header to route to the correct decoder.
+    // Opus begins with "OpusHead", Vorbis begins with 0x01 + "vorbis".
+    private func routeOggCodec(from headerData: Data) {
+        let opusSignature: [UInt8] = [0x4F, 0x70, 0x75, 0x73, 0x48, 0x65, 0x61, 0x64] // "OpusHead"
+        let vorbisSignature: [UInt8] = [0x01, 0x76, 0x6F, 0x72, 0x62, 0x69, 0x73]     // 0x01 + "vorbis"
+
+        if headerData.count >= opusSignature.count,
+           headerData.starts(with: opusSignature)
+        {
+            isProcessingOpus = true
+            isProcessingOggContainer = false
+        } else if headerData.count >= vorbisSignature.count,
+                  headerData.starts(with: vorbisSignature)
+        {
+            isProcessingOggVorbis = true
+            isProcessingOggContainer = false
+        } else {
+            isProcessingOggVorbis = true
+            isProcessingOggContainer = false
+        }
+    }
+
     /// Closes the currently open `AudioFileStream` instance, if opened.
     func closeFileStreamIfNeeded() {
+        if isProcessingOpus {
+            isProcessingOpus = false
+            isProcessingOggContainer = false
+            oggHeaderBuffer = Data()
+            opusProcessor.cleanup()
+            return
+        }
+
         if isProcessingOggVorbis {
             isProcessingOggVorbis = false
+            isProcessingOggContainer = false
+            oggHeaderBuffer = Data()
             oggVorbisProcessor.cleanup()
             return
         }
-        
+
+        if isProcessingOggContainer {
+            isProcessingOggContainer = false
+            oggHeaderBuffer = Data()
+            return
+        }
+
         guard let fileStream = audioFileStream else {
             Logger.debug("audio file stream not opened", category: .generic)
             return
@@ -113,17 +167,59 @@ final class AudioFileStreamProcessor {
     /// - Returns: An `OSStatus` value indicating if an error occurred or not.
     func parseFileStreamBytes(data: Data) -> OSStatus {
         guard !data.isEmpty else { return 0 }
-        
-        // Check if we're processing Ogg Vorbis
+
+        if isProcessingOggContainer {
+            oggHeaderBuffer.append(data)
+            if let codecPayload = extractFirstOggPagePayload(from: oggHeaderBuffer) {
+                routeOggCodec(from: codecPayload)
+                let buffered = oggHeaderBuffer
+                oggHeaderBuffer = Data()
+                if isProcessingOpus {
+                    return opusProcessor.parseOpusData(data: buffered)
+                } else {
+                    return oggVorbisProcessor.parseOggVorbisData(data: buffered)
+                }
+            }
+            return noErr
+        }
+
+        if isProcessingOpus {
+            return opusProcessor.parseOpusData(data: data)
+        }
+
         if isProcessingOggVorbis {
             return oggVorbisProcessor.parseOggVorbisData(data: data)
         }
-        
+
         guard let stream = audioFileStream else { return 0 }
         let flags: AudioFileStreamParseFlags = discontinuous ? .discontinuity : .init()
         return data.withUnsafeBytes { buffer -> OSStatus in
             AudioFileStreamParseBytes(stream, UInt32(buffer.count), buffer.baseAddress, flags)
         }
+    }
+
+    // Extract the payload of the first complete Ogg page from raw bytes.
+    // An Ogg page starts with "OggS" capture pattern, and the codec header
+    // (OpusHead or vorbis identification) is in the first page's payload.
+    private func extractFirstOggPagePayload(from data: Data) -> Data? {
+        guard data.count >= 28 else { return nil }
+
+        let capturePattern: [UInt8] = [0x4F, 0x67, 0x67, 0x53] // "OggS"
+        guard data.starts(with: capturePattern) else { return nil }
+
+        let numSegments = Int(data[26])
+        let segmentTableEnd = 27 + numSegments
+        guard data.count >= segmentTableEnd else { return nil }
+
+        var payloadSize = 0
+        for i in 27..<segmentTableEnd {
+            payloadSize += Int(data[i])
+        }
+
+        let pageEnd = segmentTableEnd + payloadSize
+        guard data.count >= pageEnd else { return nil }
+
+        return data[segmentTableEnd..<pageEnd]
     }
     
     /// Flushes any remaining packets from the AudioFileStream parser.
@@ -137,8 +233,7 @@ final class AudioFileStreamProcessor {
     ///
     /// - Returns: An `OSStatus` value indicating if an error occurred or not.
     func flushRemainingPackets() -> OSStatus {
-        // Ogg Vorbis doesn't need flushing (handled internally)
-        if isProcessingOggVorbis {
+        if isProcessingOggVorbis || isProcessingOpus || isProcessingOggContainer {
             return noErr
         }
         
@@ -158,8 +253,12 @@ final class AudioFileStreamProcessor {
         guard let readingEntry = playerContext.audioReadingEntry else {
             return
         }
-        
-        // If processing Ogg Vorbis, use the Ogg Vorbis processor
+
+        if isProcessingOpus {
+            opusProcessor.processSeek()
+            return
+        }
+
         if isProcessingOggVorbis {
             oggVorbisProcessor.processSeek()
             return
@@ -189,10 +288,12 @@ final class AudioFileStreamProcessor {
         readingEntry.lock.unlock()
 
         let bitrate = readingEntry.calculatedBitrate()
-        if readingEntry.packetDuration > 0, bitrate > 0 {
+        let framesPerPacket = readingEntry.audioStreamFormat.mFramesPerPacket
+        if framesPerPacket > 0, readingEntry.sampleRate > 0, bitrate > 0 {
             var ioFlags = AudioFileStreamSeekFlags(rawValue: 0)
             var packetsAlignedByteOffset: Int64 = 0
-            let seekPacket = Int64(floor(readingEntry.seekRequest.time / readingEntry.packetDuration))
+            let seekFrame = Int64(readingEntry.seekRequest.time * Double(readingEntry.sampleRate))
+            let seekPacket = seekFrame / Int64(framesPerPacket)
 
             let seekStatus = AudioFileStreamSeek(stream, seekPacket, &packetsAlignedByteOffset, &ioFlags)
             let dataOffset = Int64(readingEntry.audioStreamState.dataOffset)

@@ -8,7 +8,8 @@ import Foundation
 
 /// mapping from mime types to `AudioFileTypeID`
 // Custom file type for Ogg Vorbis
-let kAudioFileOggType: AudioFileTypeID = 0x6F676720 // 'ogg '
+let kAudioFileOggType: AudioFileTypeID = 0x6F676720  // 'ogg '
+let kAudioFileOpusType: AudioFileTypeID = 0x6F707573 // 'opus'
 
 let fileTypesFromMimeType: [String: AudioFileTypeID] =
     [
@@ -39,7 +40,9 @@ let fileTypesFromMimeType: [String: AudioFileTypeID] =
         "audio/flac": kAudioFileFLACType,
         "audio/ogg": kAudioFileOggType,
         "audio/vorbis": kAudioFileOggType,
-        "application/ogg": kAudioFileOggType
+        "application/ogg": kAudioFileOggType,
+        "audio/opus": kAudioFileOggType,
+        "audio/ogg; codecs=opus": kAudioFileOggType
     ]
 
 /// Method that converts mime type to AudioFileTypeID
@@ -66,6 +69,7 @@ let fileTypesFromFileExtension: [String: AudioFileTypeID] =
         "flac": kAudioFileFLACType,
         "ogg": kAudioFileOggType,
         "oga": kAudioFileOggType,
+        "opus": kAudioFileOggType,
     ]
 
 func audioFileType(fileExtension: String) -> AudioFileTypeID {

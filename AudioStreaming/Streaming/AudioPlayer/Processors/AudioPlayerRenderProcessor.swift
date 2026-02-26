@@ -50,6 +50,8 @@ final class AudioPlayerRenderProcessor: NSObject {
     /// - parameter inNumberFrames: An `AVAudioFrameCount` provided by the `AudioEngine` instance
     /// - returns An optional `UnsafePointer` of `AudioBufferList`
     func inRender(inNumberFrames: AVAudioFrameCount) -> UnsafePointer<AudioBufferList>? {
+        guard playerContext.internalState != .disposed else { return nil }
+
         playerContext.entriesLock.lock()
         let playingEntry = playerContext.audioPlayingEntry
         let readingEntry = playerContext.audioReadingEntry

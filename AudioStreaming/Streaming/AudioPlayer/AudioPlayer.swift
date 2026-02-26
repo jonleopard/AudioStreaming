@@ -110,8 +110,7 @@ open class AudioPlayer {
         playerContext.entriesLock.unlock()
         guard let entry = playingEntry else { return true }
         
-        // Check if format supports seeking (Ogg Vorbis doesn't)
-        if entry.audioFileHint == kAudioFileOggType {
+        if entry.audioFileHint == kAudioFileOggType || entry.audioFileHint == kAudioFileOpusType {
             return false
         }
         
@@ -224,8 +223,16 @@ open class AudioPlayer {
     }
 
     deinit {
+        // Stop audio hardware BEFORE deallocating buffers to prevent
+        // the render callback from accessing freed memory (fixes #131).
+        player.auAudioUnit.outputProvider = nil
+        audioEngine.stop()
+        player.auAudioUnit.stopHardware()
+        playerContext.setInternalState(to: .disposed)
         playerContext.audioPlayingEntry?.close()
         clearQueue()
+        // Signal any threads waiting on the semaphore so they can exit.
+        checkRenderWaitingAndNotifyIfNeeded()
         rendererContext.clean()
     }
 
@@ -459,6 +466,9 @@ open class AudioPlayer {
                 playingEntry.resume()
             }
             startPlayer(resetBuffers: false)
+        }
+        sourceQueue.async { [weak self] in
+            self?.processSource()
         }
     }
 

@@ -101,20 +101,25 @@ void OPStreamMarkEOF(OPStreamRef sr) {
     pthread_mutex_unlock(&s->m);
 }
 
-// libopusfile read callback: returns bytes read, 0 = EOF, <0 = error
 static int op_read_cb(void *datasrc, unsigned char *ptr, int nbytes) {
     struct OPRemoteStream *s = (struct OPRemoteStream *)datasrc;
     if (!s || nbytes <= 0) return -1;
 
     pthread_mutex_lock(&s->m);
-    size_t got = rb_read(s, ptr, (size_t)nbytes);
-    s->pos += (long long)got;
-    pthread_cond_broadcast(&s->cv);
 
-    if (got == 0 && s->eof) {
+    if (s->size == 0 && s->eof) {
         pthread_mutex_unlock(&s->m);
         return 0;
     }
+
+    if (s->size == 0) {
+        pthread_mutex_unlock(&s->m);
+        return 0;
+    }
+
+    size_t got = rb_read(s, ptr, (size_t)nbytes);
+    s->pos += (long long)got;
+    pthread_cond_broadcast(&s->cv);
 
     pthread_mutex_unlock(&s->m);
     return (int)got;

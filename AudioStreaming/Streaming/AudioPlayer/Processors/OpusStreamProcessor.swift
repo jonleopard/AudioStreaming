@@ -57,7 +57,7 @@ final class OpusStreamProcessor {
         if !entry.audioStreamState.processedDataFormat {
             let availableBytes = opDecoder.availableBytes()
 
-            if availableBytes >= 16384 {
+            if availableBytes >= 65536 {
                 do {
                     try opDecoder.openIfNeeded()
 
@@ -69,6 +69,9 @@ final class OpusStreamProcessor {
                         }
                     }
                 } catch {
+                    Logger.error("OpusStreamProcessor: open failed (\(error.localizedDescription)), resetting decoder", category: .audioRendering)
+                    opDecoder.destroy()
+                    opDecoder.create(capacityBytes: 2_097_152)
                     return noErr
                 }
             } else {
@@ -150,15 +153,6 @@ final class OpusStreamProcessor {
                     rendererContext.packetsSemaphore.wait()
                     rendererContext.waiting.write { $0 = false }
                 }
-            }
-
-            let availableBytes = opDecoder.availableBytes()
-            if availableBytes < 4096 {
-                consecutiveNoFrames += 1
-                if consecutiveNoFrames >= 3 {
-                    break decodeLoop
-                }
-                continue
             }
 
             let status = decodeAndFillBuffer()

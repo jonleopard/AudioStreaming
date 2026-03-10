@@ -110,10 +110,6 @@ open class AudioPlayer {
         playerContext.entriesLock.unlock()
         guard let entry = playingEntry else { return true }
         
-        if entry.audioFileHint == kAudioFileOggType || entry.audioFileHint == kAudioFileOpusType {
-            return false
-        }
-        
         // Check if stream has a valid duration (live streams don't)
         let entryDuration = entry.duration()
         return entryDuration > 0

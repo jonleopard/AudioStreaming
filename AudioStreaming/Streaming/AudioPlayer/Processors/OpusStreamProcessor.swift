@@ -358,6 +358,42 @@ final class OpusStreamProcessor {
     }
 
     func processSeek() {
+        guard let readingEntry = playerContext.audioReadingEntry else { return }
+
+        guard readingEntry.calculatedBitrate() > 0.0 || readingEntry.length > 0 else {
+            return
+        }
+
+        let entryDuration = readingEntry.duration()
+        let duration = entryDuration < readingEntry.progress && entryDuration > 0
+            ? readingEntry.progress : entryDuration
+        guard duration > 0.0 else { return }
+
+        let dataLengthInBytes = Double(readingEntry.audioDataLengthBytes())
+        var seekByteOffset = Int64((readingEntry.seekRequest.time / duration) * dataLengthInBytes)
+
+        // Clamp to avoid seeking past end
+        let safetyMargin = Int64(2 * 65536)
+        if seekByteOffset > Int64(readingEntry.length) - safetyMargin {
+            seekByteOffset = max(0, Int64(readingEntry.length) - safetyMargin)
+        }
+
+        readingEntry.lock.lock()
+        readingEntry.seekTime = readingEntry.seekRequest.time
+        readingEntry.lock.unlock()
+
+        // Reset the Opus decoder so it re-initializes from fresh data
+        opDecoder.destroy()
+        isInitialized = false
+        totalFramesProcessed = 0
+        cleanupBuffers()
+        audioConverter = nil
+
+        readingEntry.reset()
+        readingEntry.seek(at: Int(seekByteOffset))
+        rendererContext.waitingForDataAfterSeekFrameCount.write { $0 = 0 }
+        playerContext.setInternalState(to: .waitingForDataAfterSeek)
+        rendererContext.resetBuffers()
     }
 
     // MARK: - Helpers

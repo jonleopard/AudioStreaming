@@ -51,7 +51,7 @@ let package = Package(
                 .product(name: "opus", package: "opus-binary-xcframework")
             ],
             path: "AudioStreaming",
-            exclude: ["AudioStreaming.h", "Streaming/OggVorbis", "Info.plist"],
+            exclude: ["AudioStreaming.h", "Info.plist"],
             swiftSettings: []
         ),
         .testTarget(
